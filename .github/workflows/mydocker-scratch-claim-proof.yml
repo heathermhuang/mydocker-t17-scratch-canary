@@ -1,4 +1,5 @@
 name: MyDocker scratch claim proof
+run-name: MyDocker T17 ${{ inputs.run_digest }} ${{ inputs.target }}
 
 on:
   workflow_dispatch:
