@@ -1,0 +1,111 @@
+name: MyDocker scratch claim proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_digest:
+        description: Opaque MyDocker qualification run digest
+        required: true
+        type: string
+      case_digest:
+        description: Opaque MyDocker qualification case digest
+        required: true
+        type: string
+      target:
+        description: Fixed qualification target
+        required: true
+        type: choice
+        options:
+          - oidc_workflow_identity
+          - no_checkout_secretless_workflow
+
+permissions:
+  contents: none
+  id-token: write
+
+concurrency:
+  group: mydocker-t17-claims-${{ inputs.run_digest }}
+  cancel-in-progress: false
+
+jobs:
+  claims:
+    name: Validate fixed GitHub-hosted claims
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EXPECTED_REPOSITORY: heathermhuang/mydocker-t17-scratch-canary
+      EXPECTED_OWNER: heathermhuang
+      EXPECTED_WORKFLOW: heathermhuang/mydocker-t17-scratch-canary/.github/workflows/mydocker-scratch-claim-proof.yml@refs/heads/main
+      RUN_DIGEST: ${{ inputs.run_digest }}
+      CASE_DIGEST: ${{ inputs.case_digest }}
+      TARGET: ${{ inputs.target }}
+    steps:
+      - name: Validate OIDC and no-checkout boundary
+        shell: bash
+        run: |
+          set -eu
+          node <<'NODE'
+          const digest = /^sha256:[0-9a-f]{64}$/;
+          const fail = () => {
+            throw new Error("scratch_claim_validation_failed");
+          };
+          if (
+            !digest.test(process.env.RUN_DIGEST ?? "") ||
+            !digest.test(process.env.CASE_DIGEST ?? "") ||
+            !new Set([
+              "oidc_workflow_identity",
+              "no_checkout_secretless_workflow",
+            ]).has(process.env.TARGET)
+          ) {
+            fail();
+          }
+          if (
+            process.env.GITHUB_REPOSITORY !== process.env.EXPECTED_REPOSITORY ||
+            process.env.GITHUB_REPOSITORY_OWNER !== process.env.EXPECTED_OWNER ||
+            process.env.GITHUB_EVENT_NAME !== "workflow_dispatch" ||
+            process.env.GITHUB_REF !== "refs/heads/main" ||
+            process.env.GITHUB_REF_TYPE !== "branch" ||
+            process.env.RUNNER_ENVIRONMENT !== "github-hosted"
+          ) {
+            fail();
+          }
+          const requestUrl = new URL(
+            process.env.ACTIONS_ID_TOKEN_REQUEST_URL ?? "invalid:",
+          );
+          requestUrl.searchParams.set("audience", "mydocker-t17-scratch");
+          const response = await fetch(requestUrl, {
+            headers: {
+              authorization:
+                `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ""}`,
+            },
+          });
+          if (!response.ok) fail();
+          const body = await response.json();
+          const token = body.value;
+          if (typeof token !== "string") fail();
+          const parts = token.split(".");
+          if (parts.length !== 3) fail();
+          const claims = JSON.parse(
+            Buffer.from(parts[1], "base64url").toString("utf8"),
+          );
+          const expectedSubject =
+            `repo:${process.env.EXPECTED_REPOSITORY}:ref:refs/heads/main`;
+          if (
+            claims.aud !== "mydocker-t17-scratch" ||
+            claims.sub !== expectedSubject ||
+            claims.repository !== process.env.EXPECTED_REPOSITORY ||
+            claims.repository_owner !== process.env.EXPECTED_OWNER ||
+            claims.repository_visibility !== "public" ||
+            claims.event_name !== "workflow_dispatch" ||
+            claims.ref !== "refs/heads/main" ||
+            claims.ref_type !== "branch" ||
+            claims.runner_environment !== "github-hosted" ||
+            claims.job_workflow_ref !== process.env.EXPECTED_WORKFLOW ||
+            claims.sha !== process.env.GITHUB_SHA
+          ) {
+            fail();
+          }
+          NODE
+          printf '%s\n' \
+            'Fixed OIDC and no-checkout workflow claims passed.' \
+            >> "$GITHUB_STEP_SUMMARY"
