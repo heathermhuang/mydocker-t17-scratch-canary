@@ -46,6 +46,10 @@ jobs:
           );
           const expectedSubject =
             `repo:${process.env.EXPECTED_REPOSITORY}:ref:refs/heads/main`;
+          const expectedImmutableSubject =
+            "repo:heathermhuang@2759991/" +
+            "mydocker-t17-scratch-canary@1313359050:" +
+            "ref:refs/heads/main";
           const checks = {
             aud: claims.aud === "mydocker-t17-scratch",
             event_name: claims.event_name === "workflow_dispatch",
@@ -65,6 +69,7 @@ jobs:
               claims.runner_environment === "github-hosted",
             sha: claims.sha === process.env.GITHUB_SHA,
             sub: claims.sub === expectedSubject,
+            sub_immutable: claims.sub === expectedImmutableSubject,
             workflow_ref_present:
               typeof claims.workflow_ref === "string",
             workflow_ref_expected:
