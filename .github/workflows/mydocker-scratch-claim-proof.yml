@@ -35,7 +35,9 @@ jobs:
     timeout-minutes: 5
     env:
       EXPECTED_REPOSITORY: heathermhuang/mydocker-t17-scratch-canary
+      EXPECTED_REPOSITORY_ID: "1313359050"
       EXPECTED_OWNER: heathermhuang
+      EXPECTED_OWNER_ID: "2759991"
       EXPECTED_WORKFLOW: heathermhuang/mydocker-t17-scratch-canary/.github/workflows/mydocker-scratch-claim-proof.yml@refs/heads/main
       RUN_DIGEST: ${{ inputs.run_digest }}
       CASE_DIGEST: ${{ inputs.case_digest }}
@@ -89,13 +91,19 @@ jobs:
           const claims = JSON.parse(
             Buffer.from(parts[1], "base64url").toString("utf8"),
           );
+          const [owner, repository] =
+            process.env.EXPECTED_REPOSITORY.split("/");
           const expectedSubject =
-            `repo:${process.env.EXPECTED_REPOSITORY}:ref:refs/heads/main`;
+            `repo:${owner}@${process.env.EXPECTED_OWNER_ID}/` +
+            `${repository}@${process.env.EXPECTED_REPOSITORY_ID}:` +
+            "ref:refs/heads/main";
           if (
             claims.aud !== "mydocker-t17-scratch" ||
             claims.sub !== expectedSubject ||
             claims.repository !== process.env.EXPECTED_REPOSITORY ||
+            claims.repository_id !== process.env.EXPECTED_REPOSITORY_ID ||
             claims.repository_owner !== process.env.EXPECTED_OWNER ||
+            claims.repository_owner_id !== process.env.EXPECTED_OWNER_ID ||
             claims.repository_visibility !== "public" ||
             claims.event_name !== "workflow_dispatch" ||
             claims.ref !== "refs/heads/main" ||
@@ -108,5 +116,5 @@ jobs:
           }
           NODE
           printf '%s\n' \
-            'Fixed OIDC and no-checkout workflow claims passed.' \
+            'Fixed immutable OIDC and no-checkout workflow claims passed.' \
             >> "$GITHUB_STEP_SUMMARY"
