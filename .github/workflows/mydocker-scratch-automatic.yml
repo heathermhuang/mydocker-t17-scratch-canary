@@ -1,0 +1,98 @@
+name: MyDocker automatic scratch qualification
+run-name:
+  MyDocker scratch ${{ inputs.candidate_sha }} ${{ inputs.parent_run_id }} ${{
+  inputs.nonce }}
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        required: true
+        type: string
+      parent_run_id:
+        required: true
+        type: string
+      nonce:
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: write
+  issues: write
+  pull-requests: write
+  id-token: write
+concurrency:
+  group: mydocker-scratch-automatic
+  cancel-in-progress: false
+jobs:
+  matrix:
+    name: Twelve cases and two-zero cleanup
+    if:
+      github.actor_id == '2759991' && github.ref == 'refs/heads/main' &&
+      inputs.candidate_sha == 'f41e57b98a0cfce610e5ef888654434255ce3910'
+    environment: mydocker-scratch-automation
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      SOURCE_KEY: ${{ secrets.MYDOCKER_SCRATCH_SOURCE_KEY }}
+      EXPECTED_SOURCE_SHA: f41e57b98a0cfce610e5ef888654434255ce3910
+      EXPECTED_SOURCE_DIGEST: baf794b44f98f7d5ac2161c01c8ebbddf783ca506f490dcee7ac83fd7aef8189
+      EXPECTED_PACKAGE_DIGEST: aa88e85b512f739737921ad38a987d6f5f65e6c8668aead2537fae6062923c62
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      PARENT_RUN_ID: ${{ inputs.parent_run_id }}
+      NONCE: ${{ inputs.nonce }}
+      MYDOCKER_PRIVATE_DRIVER_ROOT: /opt/mydocker-provider-drivers
+      MYDOCKER_GITHUB_SCRATCH_DRIVER_PATH: /opt/mydocker-provider-drivers/github-scratch.mjs
+      MYDOCKER_GATE_ID: github_scratch
+      MYDOCKER_GATE_VARIANT: full
+      MYDOCKER_GITHUB_SCRATCH_AUTH_MODE: github-actions
+      MYDOCKER_GITHUB_PRODUCTION_AUTHORITY: absent
+      MYDOCKER_GITHUB_SCRATCH_OWNER: heathermhuang
+      MYDOCKER_GITHUB_SCRATCH_REPOSITORY_PREFIX: mydocker-t17-scratch
+      MYDOCKER_GITHUB_SCRATCH_CLEANUP_OWNER: mydocker-t17-scratch-cleanup
+      MYDOCKER_GITHUB_SCRATCH_SCOPE_CONFIRM: MYDOCKER_GITHUB_SCRATCH_DEDICATED_DEVELOPMENT
+      MYDOCKER_GITHUB_SCRATCH_PRINCIPAL_DIGEST:
+        ${{ vars.MYDOCKER_GITHUB_SCRATCH_PRINCIPAL_DIGEST }}
+      MYDOCKER_GITHUB_SCRATCH_SCOPE_DIGEST:
+        ${{ vars.MYDOCKER_GITHUB_SCRATCH_SCOPE_DIGEST }}
+      MYDOCKER_GITHUB_SCRATCH_AUTOMATION_DIGEST:
+        ${{ vars.MYDOCKER_GITHUB_SCRATCH_AUTOMATION_DIGEST }}
+    steps:
+      - name: Load pinned encrypted qualification source
+        shell: bash
+        run: |
+          set -eu
+          sudo install -d -m 700 -o "$(id -u)" /opt/mydocker-provider-drivers /opt/mydocker-provider-state/github-scratch /opt/mydocker-scratch-source
+          node --input-type=module <<'NODE'
+          import {createHash,createDecipheriv} from 'node:crypto';
+          import {mkdir,writeFile,copyFile,chmod} from 'node:fs/promises';
+          import {dirname} from 'node:path';
+          const fail=()=>{throw new Error('scratch_source_invalid');};
+          const hash=b=>createHash('sha256').update(b).digest('hex');
+          if (process.env.GITHUB_REPOSITORY!=='heathermhuang/mydocker-t17-scratch-canary' || process.env.GITHUB_REPOSITORY_ID!=='1313359050' || process.env.GITHUB_ACTOR_ID!=='2759991' || process.env.GITHUB_EVENT_NAME!=='workflow_dispatch' || process.env.GITHUB_REF!=='refs/heads/main' || process.env.GITHUB_RUN_ATTEMPT!=='1' || process.env.CANDIDATE_SHA!==process.env.EXPECTED_SOURCE_SHA || !/^[1-9][0-9]{0,19}$/.test(process.env.PARENT_RUN_ID??'') || !/^[0-9a-f]{64}$/.test(process.env.NONCE??'')) fail();
+          const response=await fetch(`https://api.github.com/repos/heathermhuang/mydocker-t17-scratch-canary/contents/.mydocker/scratch-source.json?ref=${process.env.GITHUB_SHA}`,{headers:{authorization:`Bearer ${process.env.GITHUB_TOKEN}`,accept:'application/vnd.github+json','x-github-api-version':'2026-03-10'},redirect:'error',signal:AbortSignal.timeout(30000)});
+          if (!response.ok) fail();
+          const record=await response.json();
+          if(record.encoding!=='base64')fail();
+          const packed=Buffer.from(record.content.replace(/\s+/g,''),'base64');
+          if(packed.length>900000 || hash(packed)!==process.env.EXPECTED_PACKAGE_DIGEST)fail();
+          const envelope=JSON.parse(packed);
+          const key=Buffer.from(process.env.SOURCE_KEY??'','base64url');
+          if(key.length!==32 || envelope.version!==1)fail();
+          const decrypt=createDecipheriv('aes-256-gcm',key,Buffer.from(envelope.iv,'base64url'));
+          decrypt.setAAD(Buffer.from(`mydocker-scratch-source/v1:${process.env.EXPECTED_SOURCE_SHA}`));
+          decrypt.setAuthTag(Buffer.from(envelope.tag,'base64url'));
+          const plaintext=Buffer.concat([decrypt.update(Buffer.from(envelope.ciphertext,'base64url')),decrypt.final()]);
+          key.fill(0);
+          if(hash(plaintext)!==process.env.EXPECTED_SOURCE_DIGEST)fail();
+          const source=JSON.parse(plaintext);plaintext.fill(0);
+          const allowed=["spikes/runtime-isolation/github-scratch-live/provider_driver.mjs","spikes/runtime-isolation/github-scratch-live/actions_identity.mjs","spikes/runtime-isolation/github-scratch-live/automatic_workflow.yml","packages/providers/github-scratch-matrix.mjs","tests/canary/gates/private-driver-common.mjs","tests/canary/gates/github-scratch.mjs","scripts/run_github_scratch_automatic.mjs","scripts/github_scratch_automation.mjs"];
+          if(source.candidate!==process.env.EXPECTED_SOURCE_SHA || JSON.stringify(Object.keys(source.files))!==JSON.stringify(allowed))fail();
+          for(const name of allowed){const path='/opt/mydocker-scratch-source/'+name;await mkdir(dirname(path),{recursive:true,mode:0o700});await writeFile(path,Buffer.from(source.files[name],'base64'),{mode:0o600});}
+          for(const [from,to] of [['provider_driver.mjs','github-scratch.mjs'],['actions_identity.mjs','actions_identity.mjs']]){const path='/opt/mydocker-provider-drivers/'+to;await copyFile('/opt/mydocker-scratch-source/spikes/runtime-isolation/github-scratch-live/'+from,path);await chmod(path,0o700);}
+          NODE
+      - name: Run twelve cases and verify two-zero cleanup
+        shell: bash
+        run:
+          node
+          /opt/mydocker-scratch-source/scripts/run_github_scratch_automatic.mjs
