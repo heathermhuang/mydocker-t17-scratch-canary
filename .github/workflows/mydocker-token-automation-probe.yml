@@ -1,0 +1,35 @@
+name: MyDocker automatic token capability probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check automatic repository credential without mutations
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const slug = 'heathermhuang/mydocker-t17-scratch-canary';
+          if (process.env.GITHUB_REPOSITORY !== slug || process.env.GITHUB_REPOSITORY_ID !== '1313359050' || process.env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || process.env.GITHUB_REF !== 'refs/heads/main') throw new Error('unexpected_probe_scope');
+          const headers = {authorization: `Bearer ${process.env.GITHUB_TOKEN}`,accept:'application/vnd.github+json','X-GitHub-Api-Version':'2026-03-10'};
+          const checks = [];
+          for (const path of ['/user', `/repos/${slug}`, `/repos/${slug}/actions/permissions`, '/installation/repositories']) {
+            const response = await fetch(`https://api.github.com${path}`, {headers,redirect:'error',signal:AbortSignal.timeout(30000)});
+            const body = await response.json();
+            checks.push({path,status:response.status,...(path===`/repos/${slug}`?{repositoryId:body.id}:{}),...(path==='/installation/repositories' && response.ok?{repositoryIds:body.repositories.map(r=>r.id)}:{})});
+          }
+          const url = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+          url.searchParams.set('audience','mydocker-github-scratch-automation');
+          const response = await fetch(url,{headers:{authorization:`Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}`},redirect:'error',signal:AbortSignal.timeout(30000)});
+          if (!response.ok) throw new Error('oidc_probe_unavailable');
+          const body = await response.json();
+          const claims = JSON.parse(Buffer.from(body.value.split('.')[1],'base64url').toString('utf8'));
+          console.log(JSON.stringify({checks,nodeVersion:process.version,oidc:{issuer:claims.iss,audience:claims.aud,repositoryId:claims.repository_id,ownerId:claims.repository_owner_id,actorId:claims.actor_id,workflowRef:claims.workflow_ref,jobWorkflowRef:claims.job_workflow_ref,runId:claims.run_id,sha:claims.sha,runnerEnvironment:claims.runner_environment}}));
+          NODE
