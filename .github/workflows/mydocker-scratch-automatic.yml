@@ -37,7 +37,7 @@ jobs:
       SOURCE_KEY: ${{ secrets.MYDOCKER_SCRATCH_SOURCE_KEY }}
       EXPECTED_SOURCE_SHA: 19d29a9dd17b771437418aafda6d0a3a0fdc14f0
       EXPECTED_SOURCE_DIGEST: 3faefa20d03576f73b5789b642e51583a19fa84d860d9d626c9f3cea6653b3c9
-      EXPECTED_PACKAGE_DIGEST: ad689a527ac75a42972edba12171e900e111c1f2d074ee5e6b2bea221e7a0d02
+      EXPECTED_PACKAGE_DIGEST: cd5d7b5c91a2a073eea72ebc9267f494e67e8fb3a53f3a4c451abc8ac55e4b78
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       PARENT_RUN_ID: ${{ inputs.parent_run_id }}
       NONCE: ${{ inputs.nonce }}
