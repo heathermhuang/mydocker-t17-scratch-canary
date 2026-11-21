@@ -28,16 +28,16 @@ jobs:
     name: Twelve cases and two-zero cleanup
     if:
       github.actor_id == '2759991' && github.ref == 'refs/heads/main' &&
-      inputs.candidate_sha == '8991203e1b93b33f024df3d35e8a45f5508b312b'
+      inputs.candidate_sha == '683e7faad8967f9f975c93f22763314bb4bd5411'
     environment: mydocker-scratch-automation
     runs-on: ubuntu-latest
     timeout-minutes: 50
     env:
       GITHUB_TOKEN: ${{ github.token }}
       SOURCE_KEY: ${{ secrets.MYDOCKER_SCRATCH_SOURCE_KEY }}
-      EXPECTED_SOURCE_SHA: 8991203e1b93b33f024df3d35e8a45f5508b312b
-      EXPECTED_SOURCE_DIGEST: ca0ba90c93e244f84fdfd2e1d98f28a18e173047baa838628b973d82d9c29f3e
-      EXPECTED_PACKAGE_DIGEST: b706745a67dc7768aab7e5b1fcd5206c08cc78ac582eb4ea4ced10bc8377e27a
+      EXPECTED_SOURCE_SHA: 683e7faad8967f9f975c93f22763314bb4bd5411
+      EXPECTED_SOURCE_DIGEST: 05ed864f880ff0ed6b3238b4fb8e7326205a5fbc1a5dbb18fc04ef7342b4bd8f
+      EXPECTED_PACKAGE_DIGEST: 58a0c579e0e663bb28f061c440978c0e2871f41502400533bc4b65be25f444ce
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       PARENT_RUN_ID: ${{ inputs.parent_run_id }}
       NONCE: ${{ inputs.nonce }}
